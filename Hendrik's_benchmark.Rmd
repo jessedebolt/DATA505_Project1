@@ -1,0 +1,111 @@
+---
+title: "Modeling Assignment 1, Hendrik's benchmark"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r}
+# add your libraries
+library(tidyverse)
+library(caret)
+library(rpart)
+wine = read_rds("../resources/pinot.rds") 
+```
+
+
+## Feature Engineering
+
+```{r}
+# create some cool features. Make sure you add comments so I know what you are trying to accomplish!
+
+wine_words <- function(df, j = 1000, stem=F){ 
+  library(tidytext)
+  library(SnowballC)
+  data(stop_words)
+
+  words <- df %>%
+    unnest_tokens(word, description) %>%
+    anti_join(stop_words) %>% # get rid of stop words
+    filter(!(word %in% c("wine","pinot","vineyard")))
+  
+  if(stem){
+    words <- words %>% 
+      mutate(word = wordStem(word))
+  }
+  
+  words <- words %>% 
+    count(id, word) %>% 
+    group_by(id) %>% 
+    mutate(exists = (n>0)) %>% 
+    ungroup %>% 
+    group_by(word) %>% 
+    mutate(total = sum(n)) %>% 
+    filter(total > j) %>% 
+    pivot_wider(id_cols = id, names_from = word, values_from = exists, values_fill = list(exists=0)) %>% 
+    right_join(select(df,id,province)) %>% 
+    select(-id) %>% 
+    mutate(across(-province, ~replace_na(.x, F)))
+}
+
+wino <- wine_words(wine, j=2000, stem=F)
+
+```
+
+
+## Specification
+
+```{r}
+# specify the model to be used (i.e. KNN or Naive Bayes) and the tuning parameters used
+
+ctrl <- trainControl(method = "cv", number = 5)
+set.seed(504) 
+
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+fit <- train(province ~ .,
+             data = train, 
+             method = "rpart",
+             trControl = ctrl,
+             metric = "Kappa")
+
+confusionMatrix(predict(fit, test),factor(test$province))
+```
+
+
+## Best model
+
+```{r}
+# Here are a few lines to inspect your best model. Add some comments about optimal hyperparameters.
+print(fit)
+print(fit$bestTune)
+```
+
+
+## Re-fit and evaluation
+
+```{r}
+# the "method" below should match the one you chose above. 
+
+set.seed(1504) # I will choose a different seed for evaluation
+
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+# example spec for knn
+fit_final <- train(province ~ .,
+             data = train, 
+             method = "rpart",
+             tuneGrid=fit$bestTune) 
+# The last line means we will fit a model using the best tune parameters your CV found above.
+
+confusionMatrix(predict(fit_final, test),factor(test$province))
+```
+

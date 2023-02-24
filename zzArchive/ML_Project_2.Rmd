@@ -1,0 +1,196 @@
+---
+title: "Machine Learning Group Project 1"
+author: "Jesse DeBolt and Isaac Johnson"
+date: "2023-01-25"
+output: html_document
+---
+
+## Setup
+
+```{r setup, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(formatR)
+library(moderndive)
+library(caret)
+library(class)
+library(fastDummies)
+
+wine <- read_rds("../pinot.rds")
+
+```
+
+
+From 1/24 class:
+```{r}
+# wino <- wine %>% 
+#   rename_all(funs(tolower(.))) %>% 
+#   rename_all(funs(str_replace_all(., "-", "_"))) %>% 
+#   rename_all(funs(str_replace_all(., " ", "_"))) %>% 
+#   mutate(old = str_detect(description, " old")) %>% 
+#   mutate(village = str_detect(description, "[Vv]illage")) %>% 
+#   mutate(northern = str_detect(description, "[Nn]orthern")) %>% 
+#   select(-description) %>% 
+#   drop_na(.)
+# 
+# head(wino) %>% 
+#   select(1:8)
+```
+
+# 1/31 class:
+## Create document term matrix
+```{r}
+library(tidytext)
+data(stop_words)
+head(stop_words, 25)$word
+
+
+names(wine)[names(wine)=='id'] = 'ID'
+
+df <- wine %>%
+  unnest_tokens(word, description) %>% 
+  anti_join(stop_words) %>% # get rid of stop words
+  filter(word != "wine") %>%
+  filter(word != "pinot") %>%
+  count(ID, word) %>% #group by wine id and count
+  group_by(ID) %>% 
+  mutate(freq = n/sum(n)) %>% 
+  mutate(exists = (n>0)) %>% 
+  ungroup %>% 
+  group_by(word) %>% 
+  mutate(total = sum(n))
+
+head(df, 10)
+
+```
+
+## Top words in database
+```{r}
+df %>% 
+  count(word) %>%
+  arrange(desc(n)) %>% 
+  head(25)
+```
+
+## Pivot wide and rejoin with wine
+```{r}
+wino <- df %>% 
+  filter(total > 1000) %>% #limit number of columns 
+  pivot_wider(id_cols = ID, names_from = word, values_from = exists, values_fill = list(exists=0)) %>% 
+  merge(select(wine,ID, province), all.y=TRUE) #%>% 
+
+wino <- replace(wino, is.na(wino), FALSE)#if na, make FALSE
+
+head(wino, 10) %>% 
+  select(1:5,province)
+```
+
+
+
+
+
+
+
+```{r}
+set.seed(504)
+wine_index <- createDataPartition(wino$province, p = 0.8, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+fit <- knn(
+  train = select(train,-province), 
+  test = select(test,-province), 
+  k=5, 
+  cl = train$province, 
+  prob = T)
+
+
+```
+
+
+## Confusion matrix
+
+```{r tidy=T, strip.white=T, comment=""}
+confusionMatrix(fit,factor(test$province))
+```
+
+## Basic model with parameter tuning
+
+```{r}
+control <- trainControl(method = "boot", number = 1)
+fit <- train(province ~ .,
+             data = train, 
+             method = "knn",
+             tuneLength = 15,
+             trControl = control)
+fit
+```
+
+
+## Confusion Matrix
+```{r}
+confusionMatrix(predict(fit, test),factor(test$province))
+```
+
+
+## With parameter tuning and subsampling
+
+```{r}
+fit <- train(province ~ .,
+             data = train, 
+             method = "knn",
+             tuneLength = 15,
+             metric = "Kappa",
+             trControl = control)
+
+fit
+```
+
+## Confusion Matrix
+```{r}
+confusionMatrix(predict(fit, test),factor(test$province))
+```
+
+## Tuning plot
+
+```{r}
+ggplot(fit, metric="Kappa")
+
+```
+
+## A new model
+### Naive Bayes
+```{r}
+set.seed(504)
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+fit <- train(province ~ .,
+             data = train, 
+             method = "naive_bayes",
+             tuneGrid = expand.grid(usekernel = c(T,F), laplace = T, adjust = T),
+                #can specify additional parameter/details for the algorithum to use
+             metric = "Kappa",
+             trControl = trainControl(method = "cv"))
+fit
+```
+
+...now things are getting better.
+
+## Confusion Matrix
+```{r}
+confusionMatrix(predict(fit, test),factor(test$province))
+```
+## Maybe we can find words associated with our sparse provinces?
+
+```{r}
+prov_words <- df %>% 
+  left_join(select(wine, ID, province), by = "ID") %>% 
+  count(province, word) %>%
+  group_by(province) %>% 
+  top_n(5,n) %>% 
+  arrange(province, desc(n))
+
+unique(prov_words$word)
+```

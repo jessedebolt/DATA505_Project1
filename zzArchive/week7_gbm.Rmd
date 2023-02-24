@@ -1,0 +1,122 @@
+---
+title: "Modeling Assignment 1, Hendrik's benchmark"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r}
+# add your libraries
+library(tidyverse)
+library(caret)
+library(rpart)
+library(scales)
+library(janeaustenr)
+library(SnowballC)
+library(tidytext)
+
+wine = read_rds("../pinot.rds") 
+```
+
+
+## Feature Engineering
+
+```{r}
+# Feature Engineering based on top 50 words
+wino <- wine %>% 
+  rename_all(funs(tolower(.))) %>% 
+  rename_all(funs(str_replace_all(., "-", "_"))) %>% 
+  rename_all(funs(str_replace_all(., " ", "_"))) %>%
+  mutate(fruit = str_detect(description, "fruit")) %>% 
+  mutate(cherry = str_detect(description, "cherry")) %>%  
+  mutate(flavors = str_detect(description, "[Ff]lavors")) %>% 
+  mutate(black = str_detect(description, "black")) %>% 
+  mutate(palate = str_detect(description, "palate")) %>% 
+  mutate(red = str_detect(description, "red")) %>% 
+  mutate(finish = str_detect(description, "finish")) %>% 
+  mutate(tannis = str_detect(description, "tannis")) %>% 
+  mutate(acidity = str_detect(description, "acidity")) %>%
+  mutate(aromas = str_detect(description, "aromas")) %>%
+  mutate(light = str_detect(description, "light")) %>%
+  mutate(nose = str_detect(description, "nose")) %>% 
+  mutate(drink = str_detect(description, "drink")) %>% 
+  mutate(ripe = str_detect(description, "ripe")) %>%
+  mutate(raspberry = str_detect(description, "raspberry")) %>%
+  mutate(vineyard = str_detect(description, "vineyard")) %>%
+  mutate(cranberry = str_detect(description, "cranberry")) %>%
+  mutate(oak = str_detect(description, "oak")) %>%
+  mutate(strawberry = str_detect(description, "strawberry")) %>% #25
+  mutate(bodied = str_detect(description, "bodied")) %>%
+  mutate(spice = str_detect(description, "spice")) %>%
+  mutate(dark = str_detect(description, "dark")) %>%
+  mutate(plum = str_detect(description, "plum")) %>%
+  mutate(fruits = str_detect(description, "fruits")) %>% 
+  mutate(texture = str_detect(description, "texture")) %>%
+  mutate(tart = str_detect(description, "tart")) %>%
+  mutate(bottling = str_detect(description, "bottling")) %>%
+  mutate(fresh = str_detect(description, "fresh")) %>%
+  mutate(rich = str_detect(description, "rich")) %>%
+  mutate(soft = str_detect(description, "soft")) %>%
+  mutate(earthy = str_detect(description, "earthy")) %>%
+  mutate(berry = str_detect(description, "berry")) %>%
+  mutate(notes = str_detect(description, "notes")) %>% 
+  mutate(noir = str_detect(description, "noir")) %>%
+  mutate(offers = str_detect(description, "offers")) %>%
+  mutate(cola = str_detect(description, "cola")) %>%
+  mutate(tea = str_detect(description, "tea")) %>%
+  mutate(firm = str_detect(description, "firm")) %>%
+  mutate(spicy = str_detect(description, "spicy")) %>%
+  mutate(dried = str_detect(description, "dried")) %>%
+  mutate(bright = str_detect(description, "bright")) %>%
+  mutate(earth = str_detect(description, "earth")) %>%
+  mutate(structure = str_detect(description, "structure")) %>%
+  mutate(juicy = str_detect(description, "juicy")) %>% #50
+  mutate(medium = str_detect(description, "medium")) %>%
+  mutate(touch = str_detect(description, "touch")) %>%
+  mutate(flavor = str_detect(description, "flavor")) %>%
+  mutate(rose = str_detect(description, "rose")) %>%
+  mutate(chocolate = str_detect(description, "chocolate")) %>%
+  mutate(pomegranate = str_detect(description, "pomegranate")) %>%
+  
+  mutate(year = as.factor(year)) %>% 
+  select(-c(description,id, year)) %>% #nb=.
+#  select(-c(description,id)) %>% #knn=.5367
+  drop_na(.)
+
+```
+
+
+## Specification
+### First run based on top 50 words in wine dataset
+```{r}
+# specify the model to be used (i.e. KNN or Naive Bayes) and the tuning parameters used
+ctrl <- trainControl(method = "cv", number = 3)
+set.seed(504) 
+
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+table(train$province)
+
+Grid = expand.grid(interaction.depth=c(5,7,9), n.trees=300,
+                   shrinkage=c(0.15, 0.001),
+                   n.minobsinnode=10)
+
+fit <- train(province ~ .,
+             data = train, 
+             method = "gbm",
+             tuneGrid = Grid,
+             verbose=FALSE,
+             trControl = ctrl)
+
+fit
+confusionMatrix(factor(predict(fit, newdata=test)),factor(test$province))
+
+```
+
+
