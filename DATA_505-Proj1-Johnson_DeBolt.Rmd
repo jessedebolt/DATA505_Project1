@@ -96,7 +96,8 @@ wino <- wine %>%
 ### First run based on top 50 words in wine dataset
 ```{r}
 # specify the model to be used (i.e. KNN or Naive Bayes) and the tuning parameters used
-
+start_time <- Sys.time()
+# Code here
 ctrl <- trainControl(method = "cv", number = 5)
 set.seed(504) 
 
@@ -113,6 +114,10 @@ fit <- train(province ~ .,
 
 confusionMatrix(predict(fit, test),factor(test$province))
 fit
+
+end_time <- Sys.time()
+end_time - start_time
+
 ```
 
 
