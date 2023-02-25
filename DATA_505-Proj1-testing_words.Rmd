@@ -144,7 +144,7 @@ start_time <- Sys.time()
 ctrl <- trainControl(method = "cv", number = 5)# with tune length of 13 this results .8318
 set.seed(504) 
 
-#adjusted split to 75% training, 25% test data.
+#adjusted split to 75% training, 25% test data. 45min run
 wine_index <- createDataPartition(wino$province, p = 0.75, list = FALSE)
 
 train <- wino[ wine_index, ]
