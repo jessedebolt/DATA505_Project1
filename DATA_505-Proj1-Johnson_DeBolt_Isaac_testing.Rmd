@@ -19,7 +19,10 @@ library(rpart)
 # library(scales)
 # library(janeaustenr)
 # library(SnowballC)
+#added
 library(tidytext)
+library(ggplot2)
+library(scales)
 
 wine = read_rds("../pinot.rds") 
 
@@ -93,7 +96,7 @@ wino <- wine %>%
 
 
 ## Specification
-### First run based on top 50 words in wine dataset
+### First run based on top 50 words in wine dataset (kappa .7529)
 ```{r}
 # specify the model to be used (i.e. KNN or Naive Bayes) and the tuning parameters used
 start_time <- Sys.time()
@@ -242,7 +245,7 @@ wino <- wine %>%
 
 
 ## Specification
-### Second run based on adding ten words in NY but not Cali
+### Second run based on adding ten words in NY but not Cali (kappa .7644)
 ```{r}
 # specify the model to be used (i.e. KNN or Naive Bayes) and the tuning parameters used
 
@@ -305,6 +308,181 @@ confusionMatrix(predict(fit_final, test),factor(test$province))
 
 end_time <- Sys.time()
 end_time - start_time
+
+```
+
+
+
+
+
+
+
+## experiment 1 weighting more CA more OR kappa .764
+```{r}
+#summary count of each province
+table(wino$province)
+
+# Create a vector of weights for each province
+province_weights <- ifelse(train$province %in% c("California", "Oregon"), 2, 1)
+
+# Pass the weights vector to the `train()` function
+fit <- train(province ~ .,
+             data = train, 
+             method = "rf", 
+             trControl = ctrl,
+             tuneLength = 15, 
+             metric = "Kappa",
+             weights = province_weights)
+
+
+```
+
+```{r}
+
+confusionMatrix(predict(fit, test),factor(test$province))
+fit
+```
+
+## experiment 2 weighting more CV more Marl, more Burg (kappa .763) 14 min
+```{r}
+
+#timer
+start_time <- Sys.time()
+# Create a vector of weights for each province
+province_weights <- ifelse(train$province %in% c("Burgundy", "Marlborough, Casablanca_Valley"), 5, 1)
+
+# Pass the weights vector to the `train()` function
+fit <- train(province ~ .,
+             data = train, 
+             method = "rf", 
+             trControl = ctrl,
+             tuneLength = 15, 
+             metric = "Kappa",
+             weights = province_weights)
+
+#timer end
+end_time <- Sys.time()
+end_time - start_time
+```
+
+```{r}
+
+confusionMatrix(predict(fit, test),factor(test$province))
+fit
+```
+##visualize importance of variables
+```{r}
+
+featurePlot(x = train[, 1:3],
+            y = as.factor(train$province),
+            plot = "box")
+            
+
+
+featurePlot(x = train[, 1:3],
+            y = as.factor(train$province),
+            plot = "box",
+            strip=strip.custom(par.strip.text = list(cex = .7)),
+            scales = list(x = list(relation = "free"),
+                          y = list(relation = "free")))
+```
+## Experiment #3 weighted fruit=ture (kappa .7571) 14 min
+```{r}
+#timer
+start_time <- Sys.time()
+# Create a vector of weights for each province
+province_weights <- ifelse(train$fruit %in% c("TRUE"), 5, 1)
+
+# Pass the weights vector to the `train()` function
+fit <- train(province ~ .,
+             data = train, 
+             method = "rf", 
+             trControl = ctrl,
+             tuneLength = 15, 
+             metric = "Kappa",
+             weights = province_weights)
+
+#timer end
+end_time <- Sys.time()
+end_time - start_time
+
+confusionMatrix(predict(fit, test),factor(test$province))
+fit
+ 
+```
+
+
+
+## Experiment #4 weighted fruit cherry flavors black palate (kappa .7516) 14 min
+```{r}
+#timer
+start_time <- Sys.time()
+# Create a vector of weights for each province
+province_weights <- ifelse(train$fruit %in% c("TRUE"), 5, 1) |
+    ifelse(train$cherry %in% c("TRUE"), 5, 1) |
+    ifelse(train$flavors %in% c("TRUE"), 5, 1) |
+    ifelse(train$black %in% c("TRUE"), 5, 1) |
+    ifelse(train$palate %in% c("TRUE"), 5, 1)
+
+# Pass the weights vector to the `train()` function
+fit <- train(province ~ .,
+             data = train, 
+             method = "rf", 
+             trControl = ctrl,
+             tuneLength = 15, 
+             metric = "Kappa",
+             weights = province_weights)
+
+#timer end
+end_time <- Sys.time()
+end_time - start_time
+
+confusionMatrix(predict(fit, test),factor(test$province))
+fit
+
+#fruit cherry Fflavors black palate red finish. tannins acidity aromas light
+ 
+```
+
+
+
+## Experiment #5 weighted price>90 (kappa .756) 14 min
+```{r}
+#timer
+start_time <- Sys.time()
+# Create a vector of weights for each province
+province_weights <- ifelse(train$price>90, 5, 1)
+
+# Pass the weights vector to the `train()` function
+fit <- train(province ~ .,
+             data = train, 
+             method = "rf", 
+             trControl = ctrl,
+             tuneLength = 15, 
+             metric = "Kappa",
+             weights = province_weights)
+
+#timer end
+end_time <- Sys.time()
+end_time - start_time
+
+confusionMatrix(predict(fit, test),factor(test$province))
+fit
+
+#fruit cherry Fflavors black palate red finish. tannins acidity aromas light
+ 
+```
+
+
+```{r}
+
+ggplot(wine, aes(x = (price))) +
+    geom_histogram(bins=10) +
+    xlim(0, 100)
+
+ggplot(wine, aes(x = (points))) +
+    geom_histogram(bins=10)
+
 
 ```
 
