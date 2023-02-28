@@ -1,0 +1,124 @@
+---
+title: "Modeling Assignment 1, Hendrik's benchmark"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup
+
+```{r}
+# add your libraries
+library(tidyverse)
+library(caret)
+library(rpart)
+library(tidytext)
+
+wine = read_rds("pinot.rds") 
+
+names(wine)[names(wine)=='id'] = 'ID'
+
+```
+
+
+## Feature Engineering
+
+```{r}
+# create some cool features. Make sure you add comments so I know what you are trying to accomplish!
+
+## Create document term matrix
+data(stop_words)#bringing in stop words to remove from text
+
+names(wine)[names(wine)=='id'] = 'ID'
+
+df <- wine %>%
+  unnest_tokens(word, description) %>% 
+  anti_join(stop_words) %>% # getting rid of stop words
+  filter(word != "wine") %>% # removing words that are too common
+  filter(word != "pinot") %>%
+  count(ID, word) %>%
+  group_by(ID) %>% 
+  mutate(freq = n/sum(n)) %>% # adding frequency of word occurrence in description
+  mutate(exists = (n>0)) %>% # adding notation on whether the word exists in the description
+  ungroup %>% 
+  group_by(word) %>% 
+  mutate(total = sum(n)) # final count of word occurrence
+
+## Pivot wide and rejoin with wine
+wino <- df %>% 
+  filter(total > 200) %>% # limit number of columns to any frequency above 200
+  pivot_wider(id_cols = ID, names_from = word, values_from = exists, values_fill = list(exists=0)) %>% 
+  merge(select(wine,ID, province, price, points), all.y=TRUE)  
+
+wino <- replace(wino, is.na(wino), FALSE)# if na, make FALSE
+
+```
+
+
+## Specification
+
+```{r}
+# tracking time to assure not too long of a run
+start_time <- Sys.time()
+
+# specify the model to be used (i.e. KNN or Naive Bayes) and the tuning parameters used
+ctrl <- trainControl(method = "cv", number = 5)
+set.seed(504) 
+
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+fit <- train(province ~ .,
+             data = train, 
+             method = "rf", # Set method to random forest
+             trControl = ctrl,
+             tuneLength = 13,# length of 15:.82ish,10:.822,13:.8303(optimal) at 45mins)
+#             ntree = 1000, #causes additional 45+ min run time with only increase of 0.001
+             metric = "Kappa")
+
+confusionMatrix(predict(fit, test),factor(test$province))
+
+# tracking time to assure not too long of a run
+end_time <- Sys.time()
+end_time - start_time
+
+```
+
+
+## Best model
+
+```{r}
+# Here are a few lines to inspect your best model. Add some comments about optimal hyperparameters.
+print(fit)
+print(fit$bestTune)
+```
+
+
+## Re-fit and evaluation
+
+```{r}
+# the "method" below should match the one you chose above. 
+
+set.seed(1504) # I will choose a different seed for evaluation
+
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+# example spec for knn
+fit_final <- train(province ~ .,
+             data = train, 
+             method = "rf", # Set method to random forest
+             trControl = ctrl,
+             tuneLength = 13,# length of 15:.82ish,10:.822,13:.8303(optimal) at 45mins)
+#             ntree = 1000, #causes additional 45+ min run time with only increase of 0.001
+             tuneGrid=fit$bestTune) 
+# The last line means we will fit a model using the best tune parameters your CV found above.
+
+confusionMatrix(predict(fit_final, test),factor(test$province))
+
+```
+

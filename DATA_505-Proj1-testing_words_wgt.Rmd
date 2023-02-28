@@ -1,0 +1,213 @@
+---
+title: "Modeling Assignment 1"
+Authors: Isaac Johnson & Jesse DeBolt
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+```
+
+## Setup
+
+```{r}
+# add your libraries
+library(tidyverse)
+library(caret)
+library(rpart)
+# library(scales)
+# library(janeaustenr)
+# library(SnowballC)
+library(tidytext)
+
+wine = read_rds("pinot.rds") 
+
+```
+
+
+## Feature Engineering
+```{r}
+# Feature Engineering based on top 50 words
+# wino <- wine %>% 
+#   rename_all(funs(tolower(.))) %>% 
+#   rename_all(funs(str_replace_all(., "-", "_"))) %>% 
+#   rename_all(funs(str_replace_all(., " ", "_"))) %>%
+#   mutate(fruit = str_detect(description, "fruit")) %>% 
+#   mutate(cherry = str_detect(description, "cherry")) %>%  
+#   mutate(flavors = str_detect(description, "[Ff]lavors")) %>% 
+#   mutate(black = str_detect(description, "black")) %>% 
+#   mutate(palate = str_detect(description, "palate")) %>% 
+#   mutate(red = str_detect(description, "red")) %>% 
+#   mutate(finish = str_detect(description, "finish")) %>% 
+#   mutate(tannis = str_detect(description, "tannis")) %>% 
+#   mutate(acidity = str_detect(description, "acidity")) %>%
+#   mutate(aromas = str_detect(description, "aromas")) %>%
+#   mutate(light = str_detect(description, "light")) %>%
+#   mutate(nose = str_detect(description, "nose")) %>% 
+#   mutate(drink = str_detect(description, "drink")) %>% 
+#   mutate(ripe = str_detect(description, "ripe")) %>%
+#   mutate(raspberry = str_detect(description, "raspberry")) %>%
+#   mutate(vineyard = str_detect(description, "vineyard")) %>%
+#   mutate(cranberry = str_detect(description, "cranberry")) %>%
+#   mutate(oak = str_detect(description, "oak")) %>%
+#   mutate(strawberry = str_detect(description, "strawberry")) %>% #25
+#   mutate(bodied = str_detect(description, "bodied")) %>%
+#   mutate(spice = str_detect(description, "spice")) %>%
+#   mutate(dark = str_detect(description, "dark")) %>%
+#   mutate(plum = str_detect(description, "plum")) %>%
+#   mutate(fruits = str_detect(description, "fruits")) %>% 
+#   mutate(texture = str_detect(description, "texture")) %>%
+#   mutate(tart = str_detect(description, "tart")) %>%
+#   mutate(bottling = str_detect(description, "bottling")) %>%
+#   mutate(fresh = str_detect(description, "fresh")) %>%
+#   mutate(rich = str_detect(description, "rich")) %>%
+#   mutate(soft = str_detect(description, "soft")) %>%
+#   mutate(earthy = str_detect(description, "earthy")) %>%
+#   mutate(berry = str_detect(description, "berry")) %>%
+#   mutate(notes = str_detect(description, "notes")) %>% 
+#   mutate(noir = str_detect(description, "noir")) %>%
+#   mutate(offers = str_detect(description, "offers")) %>%
+#   mutate(cola = str_detect(description, "cola")) %>%
+#   mutate(tea = str_detect(description, "tea")) %>%
+#   mutate(firm = str_detect(description, "firm")) %>%
+#   mutate(spicy = str_detect(description, "spicy")) %>%
+#   mutate(dried = str_detect(description, "dried")) %>%
+#   mutate(bright = str_detect(description, "bright")) %>%
+#   mutate(earth = str_detect(description, "earth")) %>%
+#   mutate(structure = str_detect(description, "structure")) %>%
+#   mutate(juicy = str_detect(description, "juicy")) %>% #50
+#   mutate(medium = str_detect(description, "medium")) %>%
+#   mutate(touch = str_detect(description, "touch")) %>%
+#   mutate(flavor = str_detect(description, "flavor")) %>%
+#   mutate(rose = str_detect(description, "rose")) %>%
+#   mutate(chocolate = str_detect(description, "chocolate")) %>%
+#   mutate(pomegranate = str_detect(description, "pomegranate")) %>%
+#   
+#   mutate(year = as.factor(year)) %>% 
+#   select(-c(description,id, year)) %>% #nb=.
+# #  select(-c(description,id)) %>% #knn=.5367
+#   drop_na(.)
+
+```
+
+
+##Additional engineering
+```{r}
+## Create document term matrix
+data(stop_words)
+head(stop_words, 25)$word
+
+names(wine)[names(wine)=='id'] = 'ID'
+
+df <- wine %>%
+  unnest_tokens(word, description) %>% 
+  anti_join(stop_words) %>% # get rid of stop words
+  filter(word != "wine") %>%
+  filter(word != "pinot") %>%
+  count(ID, word) %>% #group by wine id and count
+  group_by(ID) %>% 
+  mutate(freq = n/sum(n)) %>% 
+  mutate(exists = (n>0)) %>% 
+  ungroup %>% 
+  group_by(word) %>% 
+  mutate(total = sum(n))
+
+head(df, 10)
+
+## Top words in database
+# top50 <- df %>% 
+#   count(word) %>%
+#   arrange(desc(n)) %>% 
+#   head(50)
+
+## Pivot wide and rejoin with wine
+wino <- df %>% 
+  filter(total > 200) %>% #limit number of columns 
+  pivot_wider(id_cols = ID, names_from = word, values_from = exists, values_fill = list(exists=0)) %>% 
+  merge(select(wine,ID, province, price, points), all.y=TRUE) #%>% 
+
+wino <- replace(wino, is.na(wino), FALSE)#if na, make FALSE
+
+head(wino, 10) %>% 
+  select(1:5,province)
+
+```
+
+
+## Specification
+### First run based on
+```{r}
+# specify the model to be used (i.e. KNN or Naive Bayes) and the tuning parameters used
+start_time <- Sys.time()
+# Code here
+ctrl <- trainControl(method = "cv", number = 5)# with tune length of 13 this results .8318
+set.seed(504) 
+
+#adjusted split to 75% training, 25% test data. 45min run
+wine_index <- createDataPartition(wino$province, p = 0.75, list = FALSE)
+
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+# Create a vector of weights for each province
+province_weights <- ifelse(train$province %in% c("Burgundy", "Marlborough, Casablanca_Valley"), 5, 1)
+
+
+fit <- train(province ~ .,
+             data = train, 
+             method = "rf", # Set method to random forest
+             trControl = ctrl,
+             tuneLength = 13,# length of 15:.82ish,10:.822,13:.8303(optimal) at 45mins)
+#             ntree = 1000, #causes additional 45+ min run time with only increase of 0.001
+             metric = "Kappa"
+#             weights = province_weights)#no improvement when adding wrights
+
+confusionMatrix(predict(fit, test),factor(test$province))
+fit
+
+end_time <- Sys.time()
+end_time - start_time
+
+```
+
+
+
+
+# Final model testing
+## Best model
+```{r}
+# Here are a few lines to inspect your best model. Add some comments about optimal hyperparameters.
+print(fit)
+print(fit$bestTune)
+
+```
+
+
+## Re-fit and evaluation
+```{r}
+# the "method" below should match the one you chose above. 
+start_time <- Sys.time()
+# Code here
+set.seed(1504) # I will choose a different seed for evaluation
+
+wine_index <- createDataPartition(wino$province, p = 0.80, list = FALSE)
+train <- wino[ wine_index, ]
+test <- wino[-wine_index, ]
+
+# example spec for knn
+fit_final <- train(province ~ .,
+             data = train, 
+             method = "rf", # Set method to random forest
+             tuneLength = 15,# Added tune length 
+             tuneGrid=fit$bestTune) 
+# The last line means we will fit a model using the best tune parameters your CV found above.
+
+confusionMatrix(predict(fit_final, test),factor(test$province))
+
+
+end_time <- Sys.time()
+end_time - start_time
+fit_final
+```
+
