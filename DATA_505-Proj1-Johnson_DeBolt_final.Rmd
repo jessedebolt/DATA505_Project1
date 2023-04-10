@@ -1,5 +1,6 @@
 ---
 title: "Modeling Assignment 1, Hendrik's benchmark"
+author: Isaac Johnson & Jesse DeBolt
 output: html_document
 ---
 
